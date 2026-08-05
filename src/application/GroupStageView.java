@@ -48,7 +48,8 @@ public class GroupStageView {
         nextStageButton.setDisable(true);
 
         nextStageButton.setOnAction(e -> {
-            KnockoutStageView knockoutView = new KnockoutStageView(primaryStage, tournamentManager, selectedMode);
+            // Pass 'primaryStage.getScene()' so KnockoutStageView can navigate back seamlessly
+            KnockoutStageView knockoutView = new KnockoutStageView(primaryStage, tournamentManager, selectedMode, primaryStage.getScene());
             primaryStage.setScene(knockoutView.createKnockoutScene());
         });
         

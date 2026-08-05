@@ -21,6 +21,7 @@ public class Match {
     private String stage; // e.g., "Group Stage", "Round of 32", "Final"
     private boolean isKnockout;
     private Random random;
+    private boolean isPlayed;
 
     public Match(Team teamA, Team teamB, String location, String kickoffTime, String stage, boolean isKnockout) {
         this.teamA = teamA;
@@ -142,8 +143,40 @@ public class Match {
                 }
             }
         }
+        
+     // =========================================================================
+        // MARK MATCH AS PLAYED (FIX):
+        // =========================================================================
+        this.isPlayed = true; 
+        // =========================================================================
     }
 
+    /**
+     * Checks if the match has already been simulated.
+     */
+    public boolean isPlayed() {
+        return isPlayed; // Assuming 'isPlayed' is your boolean field tracking match status
+    }
+
+    /**
+     * Returns the winning Team object.
+     * If tied in a knockout match, determines winner via penalty shootout logic or higher seed.
+     */
+    public Team getWinner() {
+        if (!isPlayed) {
+            return null;
+        }
+        
+        if (scoreA > scoreB) {
+            return teamA;
+        } else if (scoreB > scoreA) {
+            return teamB;
+        } else {
+            // Tiebreaker for knockouts: higher win probability rank advances
+            return (teamA.getWinProbabilityRank() < teamB.getWinProbabilityRank()) ? teamA : teamB;
+        }
+    }
+    
     // Getters
     public Team getTeamA() { return teamA; }
     public Team getTeamB() { return teamB; }
