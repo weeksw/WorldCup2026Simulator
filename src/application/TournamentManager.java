@@ -89,8 +89,8 @@ public class TournamentManager {
     public void runGroupStage() {
         int cityIndex = 0;
         for (Group g : groups) {
+            g.getMatches().clear(); // Clear previous runs if re-simulated
             List<Team> t = g.getTeams();
-            // Every team plays each other once in a group layout (Round Robin)
             int[][] fixtures = {{0,1}, {2,3}, {0,2}, {1,3}, {0,3}, {1,2}};
             
             for (int[] pair : fixtures) {
@@ -98,6 +98,8 @@ public class TournamentManager {
                 cityIndex++;
                 Match m = new Match(t.get(pair[0]), t.get(pair[1]), city, "18:00 UTC", "Group " + g.getName(), false);
                 m.playMatch();
+                
+                g.addMatch(m); // <-- ADD THIS LINE
             }
             g.sortGroupTable();
         }

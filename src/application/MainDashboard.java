@@ -86,12 +86,18 @@ public class MainDashboard {
         
         startButton.setOnAction(e -> {
             boolean shuffle = shuffleGroupsCheck.isSelected();
+            
+            // 1. Initialize Groups
             tournamentManager.setupGroups(shuffle);
             
-            String selectedMode = birdsEyeBtn.isSelected() ? "Birds-Eye" : "Follow Team: " + teamSelectionBox.getValue();
-            System.out.println("Starting Tournament in " + selectedMode + " mode!");
+            // 2. Capture User Mode Selection
+            String selectedMode = birdsEyeBtn.isSelected() 
+                ? "Birds-Eye Mode" 
+                : "Tracking: " + (teamSelectionBox.getValue() != null ? teamSelectionBox.getValue() : "Default");
             
-            // TODO: Transition to Group Stage View Scene
+            // 3. Construct and Switch to the Group Stage Scene
+            GroupStageView groupStageView = new GroupStageView(primaryStage, tournamentManager, selectedMode);
+            primaryStage.setScene(groupStageView.createGroupStageScene());
         });
 
         VBox bottomBox = new VBox(startButton);

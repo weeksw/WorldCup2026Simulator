@@ -3,18 +3,26 @@
  */
 package application;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
 
-/**
- * 
- */
 public class Group {
-	private String name; // "A", "B", etc.
+    private String name; // "A", "B", etc.
     private List<Team> teams;
+    private List<Match> matches; // <-- ADD THIS
 
     public Group(String name, List<Team> assignedTeams) {
         this.name = name;
         this.teams = new ArrayList<>(assignedTeams);
+        this.matches = new ArrayList<>(); // <-- ADD THIS
+    }
+
+    public void addMatch(Match match) {
+        this.matches.add(match);
+    }
+
+    public List<Match> getMatches() {
+        return matches;
     }
 
     public void sortGroupTable() {
