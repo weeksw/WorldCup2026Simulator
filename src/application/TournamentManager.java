@@ -136,4 +136,82 @@ public class TournamentManager {
 
     public List<Group> getGroups() { return groups; }
     public List<Team> getKnockoutTeamsStage32() { return knockoutTeamsStage32; }
+    
+    private List<Match> knockoutRound32Matches = new ArrayList<>();
+
+    /**
+     * Builds the official Round of 32 Match Fixtures using FIFA wildcard distribution logic.
+     */
+    public List<Match> setupRoundOf32() {
+        knockoutRound32Matches.clear();
+
+        // 1. Collect Group Standings
+        List<Team> winners = new ArrayList<>();
+        List<Team> runnersUp = new ArrayList<>();
+        List<Team> thirdPlacePool = new ArrayList<>();
+
+        for (Group g : groups) {
+            List<Team> table = g.getTeams();
+            winners.add(table.get(0));
+            runnersUp.add(table.get(1));
+            thirdPlacePool.add(table.get(2));
+        }
+
+        // 2. Tiebreaker Sort for 3rd Place Teams (Points -> GD -> GF)
+        thirdPlacePool.sort((t1, t2) -> {
+            if (t1.getPoints() != t2.getPoints()) return Integer.compare(t2.getPoints(), t1.getPoints());
+            if (t1.getGoalDifference() != t2.getGoalDifference()) return Integer.compare(t2.getGoalDifference(), t1.getGoalDifference());
+            return Integer.compare(t2.getGoalsFor(), t1.getGoalsFor());
+        });
+
+        // Take top 8 3rd-place teams
+        List<Team> top8Thirds = new ArrayList<>(thirdPlacePool.subList(0, 8));
+
+        // 3. Balance Matchups for RO32 (16 Matches Total)
+        // - 4 Matches: Group Runners-Up vs. Group Runners-Up
+        // - 4 Matches: Group Winners vs. Group Runners-Up
+        // - 8 Matches: Group Winners vs. Top 8 3rd Place Wildcards (Seeded by ranking)
+
+        // Seed top 3rd-place teams against the strongest group winners
+        top8Thirds.sort((t1, t2) -> Integer.compare(t1.getWinProbabilityRank(), t2.getWinProbabilityRank()));
+        winners.sort((t1, t2) -> Integer.compare(t1.getWinProbabilityRank(), t2.getWinProbabilityRank()));
+
+        int cityIndex = 0;
+
+        // Fixture Group 1: Top 8 Winners vs. Top 8 3rd Place Finishers
+        for (int i = 0; i < 8; i++) {
+            Team winner = winners.get(i);
+            Team third = top8Thirds.get(7 - i); // Best winner gets 8th best 3rd-place team
+            String city = hostCities[cityIndex % hostCities.length];
+            cityIndex++;
+
+            knockoutRound32Matches.add(new Match(winner, third, city, "17:00 UTC", "Round of 32", true));
+        }
+
+        // Fixture Group 2: Remaining 4 Winners vs. 4 Runners-Up
+        for (int i = 0; i < 4; i++) {
+            Team winner = winners.get(8 + i);
+            Team runnerUp = runnersUp.get(i);
+            String city = hostCities[cityIndex % hostCities.length];
+            cityIndex++;
+
+            knockoutRound32Matches.add(new Match(winner, runnerUp, city, "20:00 UTC", "Round of 32", true));
+        }
+
+        // Fixture Group 3: Remaining 8 Runners-Up play each other
+        for (int i = 4; i < 12; i += 2) {
+            Team r1 = runnersUp.get(i);
+            Team r2 = runnersUp.get(i + 1);
+            String city = hostCities[cityIndex % hostCities.length];
+            cityIndex++;
+
+            knockoutRound32Matches.add(new Match(r1, r2, city, "14:00 UTC", "Round of 32", true));
+        }
+
+        return knockoutRound32Matches;
+    }
+
+    public List<Match> getKnockoutRound32Matches() {
+        return knockoutRound32Matches;
+    }
 }

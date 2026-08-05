@@ -47,6 +47,11 @@ public class GroupStageView {
         nextStageButton.setStyle("-fx-background-color: #3182ce; -fx-text-fill: white; -fx-font-weight: bold; -fx-font-size: 14px;");
         nextStageButton.setDisable(true);
 
+        nextStageButton.setOnAction(e -> {
+            KnockoutStageView knockoutView = new KnockoutStageView(primaryStage, tournamentManager, selectedMode);
+            primaryStage.setScene(knockoutView.createKnockoutScene());
+        });
+        
         HBox topBar = new HBox(15, titleLabel, simButton, nextStageButton);
 
         // If tracking a team, add a button to open the external "All Groups" window
