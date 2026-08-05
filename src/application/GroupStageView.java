@@ -8,6 +8,7 @@ import javafx.scene.Scene;
 import javafx.scene.control.*;
 import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.scene.layout.*;
+import javafx.stage.Modality;
 import javafx.stage.Stage;
 
 public class GroupStageView {
@@ -15,63 +16,61 @@ public class GroupStageView {
     private Stage primaryStage;
     private TournamentManager tournamentManager;
     private String selectedMode;
+    private String trackedTeamName;
+    private ScrollPane centerContainer;
+    private Button simButton;
+    private Button nextStageButton;
 
     public GroupStageView(Stage primaryStage, TournamentManager tournamentManager, String selectedMode) {
         this.primaryStage = primaryStage;
         this.tournamentManager = tournamentManager;
         this.selectedMode = selectedMode;
+
+        // Extract team name if mode is "Tracking: TeamName"
+        if (selectedMode.startsWith("Tracking: ")) {
+            this.trackedTeamName = selectedMode.replace("Tracking: ", "").trim();
+        }
     }
 
     public Scene createGroupStageScene() {
         BorderPane root = new BorderPane();
         root.setPadding(new Insets(15));
 
-        // Top Control Bar
-        Label titleLabel = new Label("Group Stage - 2026 FIFA World Cup (" + selectedMode + ")");
+        // Top Header
+        Label titleLabel = new Label("Group Stage - 2026 FIFA World Cup");
         titleLabel.setStyle("-fx-font-size: 20px; -fx-font-weight: bold; -fx-text-fill: #1a365d;");
 
-        Button simButton = new Button("Simulate All Group Matches");
+        simButton = new Button("Simulate All Group Matches");
         simButton.setStyle("-fx-background-color: #38a169; -fx-text-fill: white; -fx-font-weight: bold; -fx-font-size: 14px;");
 
-        Button nextStageButton = new Button("Advance to Knockout Stage ->");
+        nextStageButton = new Button("Advance to Knockout Stage ->");
         nextStageButton.setStyle("-fx-background-color: #3182ce; -fx-text-fill: white; -fx-font-weight: bold; -fx-font-size: 14px;");
-        nextStageButton.setDisable(true); // Locked until matches are played
+        nextStageButton.setDisable(true);
 
-        HBox topBar = new HBox(20, titleLabel, simButton, nextStageButton);
+        HBox topBar = new HBox(15, titleLabel, simButton, nextStageButton);
+
+        // If tracking a team, add a button to open the external "All Groups" window
+        if (trackedTeamName != null) {
+            Button viewAllBtn = new Button("Explore All Groups 🌐");
+            viewAllBtn.setStyle("-fx-background-color: #718096; -fx-text-fill: white; -fx-font-weight: bold; -fx-font-size: 14px;");
+            viewAllBtn.setOnAction(e -> openAllGroupsWindow());
+            topBar.getChildren().add(viewAllBtn);
+        }
+
         topBar.setAlignment(Pos.CENTER_LEFT);
         topBar.setPadding(new Insets(0, 0, 15, 0));
         root.setTop(topBar);
 
-        // Center Grid for 12 Groups (3 rows x 4 columns)
-        GridPane grid = new GridPane();
-        grid.setHgap(15);
-        grid.setVgap(15);
-        grid.setPadding(new Insets(10));
+        // Center Container
+        centerContainer = new ScrollPane();
+        centerContainer.setFitToWidth(true);
+        centerContainer.setContent(buildCenterContent());
+        root.setCenter(centerContainer);
 
-        // Create a TableView for each of the 12 groups
-        int col = 0;
-        int row = 0;
-        for (Group group : tournamentManager.getGroups()) {
-            VBox groupCard = createGroupTableCard(group);
-            grid.add(groupCard, col, row);
-
-            col++;
-            if (col == 4) { // Move to next row after 4 columns
-                col = 0;
-                row++;
-            }
-        }
-
-        ScrollPane scrollPane = new ScrollPane(grid);
-        scrollPane.setFitToWidth(true);
-        root.setCenter(scrollPane);
-
-        // Simulation Action Logic
+        // Simulation Button Action
         simButton.setOnAction(e -> {
             tournamentManager.runGroupStage();
-            
-            // Refresh the tables visually
-            scrollPane.setContent(rebuildGrid());
+            centerContainer.setContent(buildCenterContent()); // Refresh table data visually
             simButton.setDisable(true);
             nextStageButton.setDisable(false);
         });
@@ -79,14 +78,40 @@ public class GroupStageView {
         return new Scene(root, 1100, 750);
     }
 
-    private GridPane rebuildGrid() {
+    /**
+     * Determines whether to render a single focused group or the full 12-group grid.
+     */
+    private Pane buildCenterContent() {
+        if (trackedTeamName != null) {
+            // Locate the group containing the tracked team
+            Group focusGroup = findGroupForTeam(trackedTeamName);
+            if (focusGroup != null) {
+                VBox focusedBox = new VBox(15);
+                focusedBox.setAlignment(Pos.CENTER);
+                focusedBox.setPadding(new Insets(30));
+
+                Label focusLabel = new Label("Focus View: " + trackedTeamName + "'s Group");
+                focusLabel.setStyle("-fx-font-size: 22px; -fx-font-weight: bold; -fx-text-fill: #2b6cb0;");
+
+                VBox groupCard = createGroupTableCard(focusGroup);
+                groupCard.setMaxWidth(600); // Give the single group card prominent width
+
+                focusedBox.getChildren().addAll(focusLabel, groupCard);
+                return focusedBox;
+            }
+        }
+
+        // Fallback: Default Birds-Eye view (All 12 Groups)
+        return buildAllGroupsGrid();
+    }
+
+    private GridPane buildAllGroupsGrid() {
         GridPane grid = new GridPane();
         grid.setHgap(15);
         grid.setVgap(15);
         grid.setPadding(new Insets(10));
 
-        int col = 0;
-        int row = 0;
+        int col = 0, row = 0;
         for (Group group : tournamentManager.getGroups()) {
             VBox groupCard = createGroupTableCard(group);
             grid.add(groupCard, col, row);
@@ -100,49 +125,77 @@ public class GroupStageView {
         return grid;
     }
 
+    /**
+     * Pops open a secondary JavaFX Window displaying all 12 Groups.
+     */
+    private void openAllGroupsWindow() {
+        Stage secondaryStage = new Stage();
+        secondaryStage.initModality(Modality.NONE); // Allows user to interact with both windows
+        secondaryStage.setTitle("2026 FIFA World Cup - All Group Standings");
+
+        ScrollPane scrollPane = new ScrollPane(buildAllGroupsGrid());
+        scrollPane.setFitToWidth(true);
+
+        Scene scene = new Scene(scrollPane, 1000, 700);
+        secondaryStage.setScene(scene);
+        secondaryStage.show();
+    }
+
+    private Group findGroupForTeam(String countryName) {
+        for (Group g : tournamentManager.getGroups()) {
+            for (Team t : g.getTeams()) {
+                if (t.getCountryName().equalsIgnoreCase(countryName)) {
+                    return g;
+                }
+            }
+        }
+        return null;
+    }
+
     private VBox createGroupTableCard(Group group) {
         VBox box = new VBox(5);
-        box.setStyle("-fx-border-color: #cbd5e0; -fx-border-radius: 5; -fx-background-color: white; -fx-padding: 8;");
+        box.setStyle("-fx-border-color: #cbd5e0; -fx-border-radius: 5; -fx-background-color: white; -fx-padding: 10;");
 
-        // Header HBox with Title and "View Matches" button
         HBox header = new HBox();
         header.setAlignment(Pos.CENTER_LEFT);
-        
+
         Label groupTitle = new Label("Group " + group.getName());
-        groupTitle.setStyle("-fx-font-weight: bold; -fx-font-size: 14px; -fx-text-fill: #2d3748;");
+        groupTitle.setStyle("-fx-font-weight: bold; -fx-font-size: 15px; -fx-text-fill: #2d3748;");
 
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
 
         Button viewMatchesBtn = new Button("Results");
-        viewMatchesBtn.setStyle("-fx-font-size: 10px; -fx-background-color: #edf2f7; -fx-border-color: #cbd5e0; -fx-border-radius: 3;");
-        
-        // Popup window showing all match scores for this group
+        viewMatchesBtn.setStyle("-fx-font-size: 11px; -fx-background-color: #edf2f7; -fx-border-color: #cbd5e0; -fx-border-radius: 3;");
         viewMatchesBtn.setOnAction(e -> showMatchResultsDialog(group));
 
         header.getChildren().addAll(groupTitle, spacer, viewMatchesBtn);
 
         TableView<Team> table = new TableView<>();
-        table.setPrefHeight(145);
+        table.setPrefHeight(150);
 
-        // Columns
+        // 1. Team Name Column
         TableColumn<Team, String> nameCol = new TableColumn<>("Team");
         nameCol.setCellValueFactory(new PropertyValueFactory<>("countryName"));
 
+        // 2. Points (PTS) Column
         TableColumn<Team, Integer> ptsCol = new TableColumn<>("PTS");
         ptsCol.setCellValueFactory(new PropertyValueFactory<>("points"));
 
-        TableColumn<Team, Integer> gdCol = new TableColumn<>("GD");
-        gdCol.setCellValueFactory(new PropertyValueFactory<>("goalDifference"));
-
+        // 3. Goals For (GF) Column
         TableColumn<Team, Integer> gfCol = new TableColumn<>("GF");
         gfCol.setCellValueFactory(new PropertyValueFactory<>("goalsFor"));
 
-        // ADDED: Goals Against Column
+        // 4. Goals Against (GA) Column
         TableColumn<Team, Integer> gaCol = new TableColumn<>("GA");
         gaCol.setCellValueFactory(new PropertyValueFactory<>("goalsAgainst"));
 
-        table.getColumns().addAll(nameCol, ptsCol, gdCol, gfCol, gaCol);
+        // 5. Goal Difference (GD) Column
+        TableColumn<Team, Integer> gdCol = new TableColumn<>("GD");
+        gdCol.setCellValueFactory(new PropertyValueFactory<>("goalDifference"));
+
+        // Reordered: Team -> PTS -> GF -> GA -> GD
+        table.getColumns().addAll(nameCol, ptsCol, gfCol, gaCol, gdCol);
 
         ObservableList<Team> teamData = FXCollections.observableArrayList(group.getTeams());
         table.setItems(teamData);
@@ -151,7 +204,6 @@ public class GroupStageView {
         return box;
     }
 
-    // Helper method to display match scores in a modal dialog
     private void showMatchResultsDialog(Group group) {
         Alert alert = new Alert(Alert.AlertType.INFORMATION);
         alert.setTitle("Group " + group.getName() + " - Match Results");
