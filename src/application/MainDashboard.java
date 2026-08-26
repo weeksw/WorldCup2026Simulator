@@ -14,6 +14,7 @@ public class MainDashboard {
     private ComboBox<String> teamSelectionBox;
     private RadioButton birdsEyeBtn;
     private RadioButton followTeamBtn;
+    private CheckBox shuffleGroupsCheck;
 
     public MainDashboard(Stage primaryStage) {
         this.primaryStage = primaryStage;
@@ -56,12 +57,10 @@ public class MainDashboard {
         teamSelectionBox.setPromptText("Choose your team...");
         teamSelectionBox.setDisable(true);
         
-        // Populate Dropdown with teams from the manager
-        // (Assuming tournamentManager initialized 48 teams)
-        for (Team t : tournamentManager.getKnockoutTeamsStage32()) { 
-             // Note: After group setup, you can loop all 48 initial teams
-        }
-        teamSelectionBox.getItems().addAll("Argentina", "France", "Spain", "England", "Brazil", "USA", "Mexico", "Canada");
+        teamSelectionBox.getItems().addAll(
+            "Argentina", "France", "Spain", "England", "Brazil", "USA", "Mexico", "Canada",
+            "Netherlands", "Portugal", "Germany", "Colombia", "Croatia", "Morocco", "Uruguay"
+        );
 
         // Dynamic Toggle Logic
         modeGroup.selectedToggleProperty().addListener((observable, oldValue, newValue) -> {
@@ -73,7 +72,7 @@ public class MainDashboard {
         });
 
         // Tournament Layout Selection Checkbox
-        CheckBox shuffleGroupsCheck = new CheckBox("Shuffle Groups Randomly");
+        shuffleGroupsCheck = new CheckBox("Shuffle Groups Randomly");
 
         centerControls.getChildren().addAll(
             modeLabel, birdsEyeBtn, followTeamBtn, teamSelectionBox, new Separator(), shuffleGroupsCheck
@@ -85,19 +84,40 @@ public class MainDashboard {
         startButton.setStyle("-fx-background-color: #2b6cb0; -fx-text-fill: white; -fx-font-size: 16px; -fx-font-weight: bold; -fx-padding: 10 20 10 20; -fx-background-radius: 5;");
         
         startButton.setOnAction(e -> {
-            boolean shuffle = shuffleGroupsCheck.isSelected();
-            
-            // 1. Initialize Groups
-            tournamentManager.setupGroups(shuffle);
-            
-            // 2. Capture User Mode Selection
-            String selectedMode = birdsEyeBtn.isSelected() 
-                ? "Birds-Eye Mode" 
-                : "Tracking: " + (teamSelectionBox.getValue() != null ? teamSelectionBox.getValue() : "Default");
-            
-            // 3. Construct and Switch to the Group Stage Scene
-            GroupStageView groupStageView = new GroupStageView(primaryStage, tournamentManager, selectedMode);
-            primaryStage.setScene(groupStageView.createGroupStageScene());
+            // 1. Validation for "Follow a Specific Country" Mode
+            if (followTeamBtn.isSelected()) {
+                String selectedTeam = teamSelectionBox.getValue();
+
+                boolean isInvalidTeam = selectedTeam == null 
+                        || selectedTeam.trim().isEmpty() 
+                        || selectedTeam.equalsIgnoreCase("Choose your team...")
+                        || selectedTeam.equalsIgnoreCase("Select a Team...")
+                        || selectedTeam.equalsIgnoreCase("Default");
+
+                if (isInvalidTeam) {
+                    Alert alert = new Alert(Alert.AlertType.WARNING);
+                    alert.setTitle("Selection Required");
+                    alert.setHeaderText("No Team Selected");
+                    alert.setContentText("Please select a specific team to follow, or switch back to 'Birds-Eye View'.");
+                    alert.showAndWait();
+                    
+                    return; // Blocks transition to the group stage
+                }
+                
+                tournamentManager.setMode("Tracking");
+                tournamentManager.setUserChosenTeamName(selectedTeam);
+
+            } else {
+                // 2. Birds-Eye View / Spectate mode
+                tournamentManager.setMode("Spectate");
+                tournamentManager.setUserChosenTeamName("");
+            }
+
+            // Initialize groups based on checkbox selection
+            tournamentManager.setupGroups(shuffleGroupsCheck.isSelected());
+
+            // Transition to the Group Stage View
+            showGroupStageScene();
         });
 
         VBox bottomBox = new VBox(startButton);
@@ -106,5 +126,15 @@ public class MainDashboard {
         root.setBottom(bottomBox);
 
         return new Scene(root, 700, 500);
+    }
+
+    /**
+     * Swaps the stage scene over to the GroupStageView.
+     */
+    private void showGroupStageScene() {
+        // Pass tournamentManager.getMode() OR tournamentManager.getUserChosenTeamName() as the 3rd argument
+        GroupStageView groupStageView = new GroupStageView(primaryStage, tournamentManager, tournamentManager.getMode());
+        Scene groupStageScene = groupStageView.createGroupStageScene();
+        primaryStage.setScene(groupStageScene);
     }
 }

@@ -1,6 +1,3 @@
-/**
- * 
- */
 package application;
 
 import java.util.ArrayList;
@@ -8,13 +5,88 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 
-/**
- * 
- */
 public class TournamentManager {
-	private List<Team> allTeams;
+    private List<Team> allTeams;
     private List<Group> groups;
     private List<Team> knockoutTeamsStage32;
+    private List<Match> knockoutRound16Matches = new ArrayList<>();
+    private List<Match> quarterFinalMatches = new ArrayList<>();
+    private List<Match> semiFinalMatches = new ArrayList<>();
+    private Match thirdPlaceMatch;
+    private Match finalMatch;
+    private Team champion;
+    private int currentKnockoutStageIndex = 0; // 0: RO32, 1: RO16, 2: QF, 3: SF, 4: Finals
+    private String userChosenTeamName = "";   // Populated in Focused Mode
+    private String mode = "Spectate";         // Added data field (default to "Spectate")
+    
+    public int getCurrentKnockoutStageIndex() { return currentKnockoutStageIndex; }
+    public void setCurrentKnockoutStageIndex(int index) { this.currentKnockoutStageIndex = index; }
+
+    public String getUserChosenTeamName() { return userChosenTeamName; }
+    public void setUserChosenTeamName(String name) { this.userChosenTeamName = name; }
+
+    // Mode Getter and Setter
+    public String getMode() { return this.mode; }
+    public void setMode(String mode) { this.mode = mode; }
+    
+    /**
+     * Checks if the user's chosen team is still active in the tournament or eliminated.
+     */
+    public boolean isUserTeamEliminated(Match lastMatchPlayed) {
+        if (userChosenTeamName == null || userChosenTeamName.isEmpty()) return false;
+        
+        if (lastMatchPlayed.getTeamA().getCountryName().equalsIgnoreCase(userChosenTeamName) ||
+            lastMatchPlayed.getTeamB().getCountryName().equalsIgnoreCase(userChosenTeamName)) {
+            return !lastMatchPlayed.getWinner().getCountryName().equalsIgnoreCase(userChosenTeamName);
+        }
+        return false;
+    }
+    
+    /**
+     * Checks if the user's team qualified out of the Group Stage.
+     * Returns true if the team was ELIMINATED (did not qualify).
+     */
+    public boolean isUserTeamEliminatedInGroupStage() {
+        if (userChosenTeamName == null || userChosenTeamName.isEmpty()) return false;
+
+        // Get list of all teams that advanced to Round of 32
+        List<Match> ro32Matches = getKnockoutRound32Matches();
+        if (ro32Matches.isEmpty()) {
+            ro32Matches = setupRoundOf32();
+        }
+
+        // Check if user's team is in any Round of 32 match
+        for (Match m : ro32Matches) {
+            if (m.getTeamA().getCountryName().equalsIgnoreCase(userChosenTeamName) ||
+                m.getTeamB().getCountryName().equalsIgnoreCase(userChosenTeamName)) {
+                return false; // Team made it to RO32, NOT eliminated!
+            }
+        }
+
+        return true; // Team was eliminated in group stage
+    }
+
+    // Checks if a specific team finished top 2 in their group (or top 8 third-place teams)
+    public boolean didTeamQualifyForKnockout(String countryName) {
+        if (countryName == null || countryName.trim().isEmpty()) {
+            return false;
+        }
+
+        // Search through round of 32 matches to see if the team made the cut
+        List<Match> ro32Matches = getKnockoutRound32Matches();
+        if (ro32Matches == null || ro32Matches.isEmpty()) {
+            ro32Matches = setupRoundOf32();
+        }
+
+        for (Match m : ro32Matches) {
+            if (m.getTeamA().getCountryName().equalsIgnoreCase(countryName) ||
+                m.getTeamB().getCountryName().equalsIgnoreCase(countryName)) {
+                return true; // Team successfully reached the knockout stage
+            }
+        }
+
+        return false; // Team failed to qualify
+    }
     
     // 2026 Host Cities matrix for match tagging
     private final String[] hostCities = {
@@ -34,11 +106,9 @@ public class TournamentManager {
      * Seeds the initial 48 teams and builds mock player rosters for them.
      */
     private void initializeData() {
-        // From 'The Athletic' rankings as of April 1st, 2026
-        // Format: Country, FIFA Rank, Win Prob Rank (1-48), Historical Titles
         String[][] teamSeeds = {
-        	{"Spain", "2", "1", "1"}, {"Argentina", "3", "2", "3"},{"France", "1", "3", "2"}, {"Brasil", "6", "4", "5"},  
-        	{"Netherlands", "7", "5", "0"}, {"England", "4", "6", "0"}, {"Portugal", "5", "7", "0"}, {"Germany", "10", "8", "4"}, 
+            {"Spain", "2", "1", "1"}, {"Argentina", "3", "2", "3"},{"France", "1", "3", "2"}, {"Brasil", "6", "4", "5"},  
+            {"Netherlands", "7", "5", "0"}, {"England", "4", "6", "0"}, {"Portugal", "5", "7", "0"}, {"Germany", "10", "8", "4"}, 
             {"Colombia", "13", "9", "0"}, {"Croatia", "11", "10", "0"}, {"Morocco", "8", "11", "0"}, {"Uruguay", "17", "12", "2"},
             {"Belgium", "9", "13", "0"}, {"Senegal", "14", "14", "0"}, {"Egypt", "29", "15", "0"}, {"South Korea", "25", "16", "0"},  
             {"Ecuador", "23", "17", "0"},  {"Mexico", "15", "18", "0"}, {"Norway", "31", "19", "0"}, {"Ivory Coast", "34", "20", "0"},
@@ -54,7 +124,6 @@ public class TournamentManager {
         for (String[] t : teamSeeds) {
             Team team = new Team(t[0], Integer.parseInt(t[1]), Integer.parseInt(t[2]), Integer.parseInt(t[3]));
             
-            // Populate a fast mock roster of 23 players per team
             for (int i = 1; i <= 23; i++) {
                 String pos = (i <= 3) ? "Goalkeeper" : (i <= 10) ? "Defender" : (i <= 18) ? "Midfielder" : "Forward";
                 team.addPlayer(new Player(team.getCountryName() + " Player " + i, pos, 0, 0));
@@ -63,15 +132,11 @@ public class TournamentManager {
         }
     }
 
-    /**
-     * Splits the 48 teams into 12 groups (A through L) of 4 teams each.
-     */
     public void setupGroups(boolean shuffle) {
         groups.clear();
         if (shuffle) {
             Collections.shuffle(allTeams);
         } else {
-            // Sort by win probability rank to balance groups naturally if not shuffling
             allTeams.sort(Comparator.comparingInt(Team::getWinProbabilityRank));
         }
 
@@ -83,13 +148,10 @@ public class TournamentManager {
         }
     }
 
-    /**
-     * Simulates all group stage fixtures (6 matches per group * 12 groups = 72 matches).
-     */
     public void runGroupStage() {
         int cityIndex = 0;
         for (Group g : groups) {
-            g.getMatches().clear(); // Clear previous runs if re-simulated
+            g.getMatches().clear();
             List<Team> t = g.getTeams();
             int[][] fixtures = {{0,1}, {2,3}, {0,2}, {1,3}, {0,3}, {1,2}};
             
@@ -98,37 +160,30 @@ public class TournamentManager {
                 cityIndex++;
                 Match m = new Match(t.get(pair[0]), t.get(pair[1]), city, "18:00 UTC", "Group " + g.getName(), false);
                 m.playMatch();
-                
-                g.addMatch(m); // <-- ADD THIS LINE
+                g.addMatch(m);
             }
             g.sortGroupTable();
         }
         determineKnockoutQualifiers();
     }
 
-    /**
-     * Evaluates group tables to advance the top 2 teams from all 12 groups,
-     * plus computes the custom tiebreaker ranking to find the top 8 third-place wildcards.
-     */
     private void determineKnockoutQualifiers() {
         knockoutTeamsStage32.clear();
         List<Team> allThirdPlaceTeams = new ArrayList<>();
 
         for (Group g : groups) {
             List<Team> sortedTable = g.getTeams();
-            knockoutTeamsStage32.add(sortedTable.get(0)); // 1st Place advances
-            knockoutTeamsStage32.add(sortedTable.get(1)); // 2nd Place advances
-            allThirdPlaceTeams.add(sortedTable.get(2));   // 3rd Place goes to wildcard pool
+            knockoutTeamsStage32.add(sortedTable.get(0));
+            knockoutTeamsStage32.add(sortedTable.get(1));
+            allThirdPlaceTeams.add(sortedTable.get(2));
         }
 
-        // Custom comparator sorting across all 3rd place teams using World Cup tiebreakers
         allThirdPlaceTeams.sort((t1, t2) -> {
             if (t1.getPoints() != t2.getPoints()) return Integer.compare(t2.getPoints(), t1.getPoints());
             if (t1.getGoalDifference() != t2.getGoalDifference()) return Integer.compare(t2.getGoalDifference(), t1.getGoalDifference());
             return Integer.compare(t2.getGoalsFor(), t1.getGoalsFor());
         });
 
-        // Top 8 third-place finishers advance to round of 32
         for (int i = 0; i < 8; i++) {
             knockoutTeamsStage32.add(allThirdPlaceTeams.get(i));
         }
@@ -139,13 +194,9 @@ public class TournamentManager {
     
     private List<Match> knockoutRound32Matches = new ArrayList<>();
 
-    /**
-     * Builds the official Round of 32 Match Fixtures using FIFA wildcard distribution logic.
-     */
     public List<Match> setupRoundOf32() {
         knockoutRound32Matches.clear();
 
-        // 1. Collect Group Standings
         List<Team> winners = new ArrayList<>();
         List<Team> runnersUp = new ArrayList<>();
         List<Team> thirdPlacePool = new ArrayList<>();
@@ -157,38 +208,28 @@ public class TournamentManager {
             thirdPlacePool.add(table.get(2));
         }
 
-        // 2. Tiebreaker Sort for 3rd Place Teams (Points -> GD -> GF)
         thirdPlacePool.sort((t1, t2) -> {
             if (t1.getPoints() != t2.getPoints()) return Integer.compare(t2.getPoints(), t1.getPoints());
             if (t1.getGoalDifference() != t2.getGoalDifference()) return Integer.compare(t2.getGoalDifference(), t1.getGoalDifference());
             return Integer.compare(t2.getGoalsFor(), t1.getGoalsFor());
         });
 
-        // Take top 8 3rd-place teams
         List<Team> top8Thirds = new ArrayList<>(thirdPlacePool.subList(0, 8));
 
-        // 3. Balance Matchups for RO32 (16 Matches Total)
-        // - 4 Matches: Group Runners-Up vs. Group Runners-Up
-        // - 4 Matches: Group Winners vs. Group Runners-Up
-        // - 8 Matches: Group Winners vs. Top 8 3rd Place Wildcards (Seeded by ranking)
-
-        // Seed top 3rd-place teams against the strongest group winners
         top8Thirds.sort((t1, t2) -> Integer.compare(t1.getWinProbabilityRank(), t2.getWinProbabilityRank()));
         winners.sort((t1, t2) -> Integer.compare(t1.getWinProbabilityRank(), t2.getWinProbabilityRank()));
 
         int cityIndex = 0;
 
-        // Fixture Group 1: Top 8 Winners vs. Top 8 3rd Place Finishers
         for (int i = 0; i < 8; i++) {
             Team winner = winners.get(i);
-            Team third = top8Thirds.get(7 - i); // Best winner gets 8th best 3rd-place team
+            Team third = top8Thirds.get(7 - i);
             String city = hostCities[cityIndex % hostCities.length];
             cityIndex++;
 
             knockoutRound32Matches.add(new Match(winner, third, city, "17:00 UTC", "Round of 32", true));
         }
 
-        // Fixture Group 2: Remaining 4 Winners vs. 4 Runners-Up
         for (int i = 0; i < 4; i++) {
             Team winner = winners.get(8 + i);
             Team runnerUp = runnersUp.get(i);
@@ -198,7 +239,6 @@ public class TournamentManager {
             knockoutRound32Matches.add(new Match(winner, runnerUp, city, "20:00 UTC", "Round of 32", true));
         }
 
-        // Fixture Group 3: Remaining 8 Runners-Up play each other
         for (int i = 4; i < 12; i += 2) {
             Team r1 = runnersUp.get(i);
             Team r2 = runnersUp.get(i + 1);
@@ -211,7 +251,74 @@ public class TournamentManager {
         return knockoutRound32Matches;
     }
 
-    public List<Match> getKnockoutRound32Matches() {
-        return knockoutRound32Matches;
+    public List<Match> getKnockoutRound32Matches() { return knockoutRound32Matches; }
+    
+    public List<Match> setupRoundOf16() {
+        knockoutRound16Matches.clear();
+        int cityIndex = 0;
+
+        for (int i = 0; i < knockoutRound32Matches.size(); i += 2) {
+            Team winner1 = knockoutRound32Matches.get(i).getWinner();
+            Team winner2 = knockoutRound32Matches.get(i + 1).getWinner();
+
+            String city = hostCities[cityIndex % hostCities.length];
+            cityIndex++;
+
+            knockoutRound16Matches.add(new Match(winner1, winner2, city, "18:00 UTC", "Round of 16", true));
+        }
+        return knockoutRound16Matches;
     }
+
+    public List<Match> setupQuarterFinals() {
+        quarterFinalMatches.clear();
+        int cityIndex = 4;
+
+        for (int i = 0; i < knockoutRound16Matches.size(); i += 2) {
+            Team winner1 = knockoutRound16Matches.get(i).getWinner();
+            Team winner2 = knockoutRound16Matches.get(i + 1).getWinner();
+
+            String city = hostCities[cityIndex % hostCities.length];
+            cityIndex++;
+
+            quarterFinalMatches.add(new Match(winner1, winner2, city, "19:00 UTC", "Quarter-Final", true));
+        }
+        return quarterFinalMatches;
+    }
+
+    public List<Match> setupSemiFinals() {
+        semiFinalMatches.clear();
+
+        Team w1 = quarterFinalMatches.get(0).getWinner();
+        Team w2 = quarterFinalMatches.get(1).getWinner();
+        Team w3 = quarterFinalMatches.get(2).getWinner();
+        Team w4 = quarterFinalMatches.get(3).getWinner();
+
+        semiFinalMatches.add(new Match(w1, w2, "Atlanta", "20:00 UTC", "Semi-Final", true));
+        semiFinalMatches.add(new Match(w3, w4, "Dallas", "20:00 UTC", "Semi-Final", true));
+
+        return semiFinalMatches;
+    }
+
+    public void setupFinals() {
+        Match sf1 = semiFinalMatches.get(0);
+        Match sf2 = semiFinalMatches.get(1);
+
+        Team sf1Winner = sf1.getWinner();
+        Team sf1Loser = (sf1.getWinner() == sf1.getTeamA()) ? sf1.getTeamB() : sf1.getTeamA();
+
+        Team sf2Winner = sf2.getWinner();
+        Team sf2Loser = (sf2.getWinner() == sf2.getTeamA()) ? sf2.getTeamB() : sf2.getTeamA();
+
+        thirdPlaceMatch = new Match(sf1Loser, sf2Loser, "Miami", "17:00 UTC", "3rd Place Match", true);
+        finalMatch = new Match(sf1Winner, sf2Winner, "New York/New Jersey", "20:00 UTC", "World Cup Final", true);
+    }
+
+    public List<Match> getKnockoutRound16Matches() { return knockoutRound16Matches; }
+    public List<Match> getQuarterFinalMatches() { return quarterFinalMatches; }
+    public List<Match> getSemiFinalMatches() { return semiFinalMatches; }
+    public Match getThirdPlaceMatch() { return thirdPlaceMatch; }
+    public Match getFinalMatch() { return finalMatch; }
+
+    public Team getChampion() { return champion; }
+    public void setChampion(Team champion) { this.champion = champion; }
 }

@@ -29,9 +29,31 @@ public class GroupStageView {
         // Extract team name if mode is "Tracking: TeamName"
         if (selectedMode.startsWith("Tracking: ")) {
             this.trackedTeamName = selectedMode.replace("Tracking: ", "").trim();
+            // Sync user's focus team with TournamentManager
+            this.tournamentManager.setUserChosenTeamName(this.trackedTeamName);
         }
     }
 
+    private void checkUserTeamElimination() {
+        String userTeam = tournamentManager.getUserChosenTeamName();
+        
+        // Safety check: Skip if spectating or if team is invalid/empty/default
+        if ("Spectate".equalsIgnoreCase(tournamentManager.getMode()) 
+                || userTeam == null 
+                || userTeam.trim().isEmpty() 
+                || userTeam.equalsIgnoreCase("Default")
+                || userTeam.equalsIgnoreCase("Select a Team...")) {
+            return;
+        }
+
+        // Safely check if the team qualified
+        boolean qualified = tournamentManager.didTeamQualifyForKnockout(userTeam);
+
+        if (!qualified) {
+            promptUserTeamEliminated(userTeam);
+        }
+    }
+    
     public Scene createGroupStageScene() {
         BorderPane root = new BorderPane();
         root.setPadding(new Insets(15));
@@ -73,15 +95,57 @@ public class GroupStageView {
         centerContainer.setContent(buildCenterContent());
         root.setCenter(centerContainer);
 
-        // Simulation Button Action
+        // Check if group stage has already been simulated
+        if (isGroupStageAlreadySimulated()) {
+            simButton.setDisable(true);
+            simButton.setText("Completed ✓");
+            nextStageButton.setDisable(false);
+        }
+
+     // Simulation Button Action
         simButton.setOnAction(e -> {
             tournamentManager.runGroupStage();
             centerContainer.setContent(buildCenterContent()); // Refresh table data visually
             simButton.setDisable(true);
+            simButton.setText("Completed ✓");
             nextStageButton.setDisable(false);
+
+            // Call the updated elimination checking logic
+            checkUserTeamElimination();
         });
 
         return new Scene(root, 1100, 750);
+    }
+
+    private boolean isGroupStageAlreadySimulated() {
+        for (Group g : tournamentManager.getGroups()) {
+            for (Match m : g.getMatches()) {
+                if (m.isPlayed()) return true;
+            }
+        }
+        return false;
+    }
+
+    private void promptUserTeamEliminated(String teamName) {
+        Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
+        alert.setTitle("Team Eliminated");
+        alert.setHeaderText("❌ " + teamName + " Has Been Knocked Out!");
+        alert.setContentText(teamName + " failed to qualify for the Knockout Stage. Would you like to view the remainder of the tournament as a spectator or start over?");
+
+        ButtonType viewRemainderBtn = new ButtonType("Spectate Remainder");
+        ButtonType startOverBtn = new ButtonType("Start Over", ButtonBar.ButtonData.CANCEL_CLOSE);
+
+        alert.getButtonTypes().setAll(viewRemainderBtn, startOverBtn);
+
+        alert.showAndWait().ifPresent(type -> {
+            if (type == startOverBtn) {
+                try {
+                    new Main().start(primaryStage);
+                } catch (Exception ex) {
+                    ex.printStackTrace();
+                }
+            }
+        });
     }
 
     /**
@@ -200,7 +264,6 @@ public class GroupStageView {
         TableColumn<Team, Integer> gdCol = new TableColumn<>("GD");
         gdCol.setCellValueFactory(new PropertyValueFactory<>("goalDifference"));
 
-        // Reordered: Team -> PTS -> GF -> GA -> GD
         table.getColumns().addAll(nameCol, ptsCol, gfCol, gaCol, gdCol);
 
         ObservableList<Team> teamData = FXCollections.observableArrayList(group.getTeams());
