@@ -1,15 +1,13 @@
-/**
- * 
- */
 package application;
 
-import java.util.Collections;
+/*
+ * @author William Weeks
+ * 
+ */
+
 import java.util.List;
 import java.util.Random;
 
-/**
- * 
- */
 public class Match {
 	
 	private Team teamA;

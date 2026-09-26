@@ -11,6 +11,17 @@ import javafx.scene.layout.*;
 import javafx.stage.Modality;
 import javafx.stage.Stage;
 
+/**
+ * User interface dashboard for the Group Stage of the Tournament Engine.
+ * <p>
+ * Renders standings for all 12 groups, supports dual-view modes (Focused Team vs. Spectate),
+ * handles match simulation execution, and enforces user team qualification/elimination checks.
+ * </p>
+ * 
+ * @author William Weeks
+ * @version 1.0
+ */
+
 public class GroupStageView {
 
     private Stage primaryStage;
@@ -20,24 +31,41 @@ public class GroupStageView {
     private ScrollPane centerContainer;
     private Button simButton;
     private Button nextStageButton;
-
+    
+    /**
+     * Constructs the GroupStageView dashboard and parses mode selection.
+     * 
+     * @param primaryStage The primary JavaFX window frame for scene switching.
+     * @param tournamentManager The core engine handling team, group, and match data.
+     * @param selectedMode Operating mode string ("Spectate" or "Tracking: [Country]").
+     */
+    
     public GroupStageView(Stage primaryStage, TournamentManager tournamentManager, String selectedMode) {
+    	
         this.primaryStage = primaryStage;
         this.tournamentManager = tournamentManager;
         this.selectedMode = selectedMode;
 
-        // Extract team name if mode is "Tracking: TeamName"
-        if (selectedMode.startsWith("Tracking: ")) {
+        // Parse team tracking context from incoming mode flag
+        if (selectedMode != null && selectedMode.startsWith("Tracking: ")) {
             this.trackedTeamName = selectedMode.replace("Tracking: ", "").trim();
-            // Sync user's focus team with TournamentManager
             this.tournamentManager.setUserChosenTeamName(this.trackedTeamName);
         }
     }
 
+    /**
+     * Checks if the tracked user team qualified for the knockout stage.
+     * <p>
+     * Prompts an alert dialog if the team was eliminated in group play, offering
+     * the option to transition to spectate mode or restart the simulator.
+     * </p>
+     */
+    
     private void checkUserTeamElimination() {
+    	
         String userTeam = tournamentManager.getUserChosenTeamName();
         
-        // Safety check: Skip if spectating or if team is invalid/empty/default
+        // Skip validation if spectating or if no valid team is tracked
         if ("Spectate".equalsIgnoreCase(tournamentManager.getMode()) 
                 || userTeam == null 
                 || userTeam.trim().isEmpty() 
@@ -46,19 +74,28 @@ public class GroupStageView {
             return;
         }
 
-        // Safely check if the team qualified
+        // Query backend manager to confirm knockout qualification
         boolean qualified = tournamentManager.didTeamQualifyForKnockout(userTeam);
 
         if (!qualified) {
+        	
             promptUserTeamEliminated(userTeam);
         }
     }
     
+    /**
+     * Builds and configures the core JavaFX Scene for the Group Stage view.
+     * 
+     * @return Scene The rendered Group Stage interface.
+     */
+    
+    @SuppressWarnings(value = {"unused"})
     public Scene createGroupStageScene() {
+    	
         BorderPane root = new BorderPane();
         root.setPadding(new Insets(15));
 
-        // Top Header
+        // Top Navigation Header
         Label titleLabel = new Label("Group Stage - 2026 FIFA World Cup");
         titleLabel.setStyle("-fx-font-size: 20px; -fx-font-weight: bold; -fx-text-fill: #1a365d;");
 
@@ -67,18 +104,19 @@ public class GroupStageView {
 
         nextStageButton = new Button("Advance to Knockout Stage ->");
         nextStageButton.setStyle("-fx-background-color: #3182ce; -fx-text-fill: white; -fx-font-weight: bold; -fx-font-size: 14px;");
-        nextStageButton.setDisable(true);
+        nextStageButton.setDisable(true); // Locked until group stage matches execute
 
+        // Navigation to Knockout Stage
         nextStageButton.setOnAction(e -> {
-            // Pass 'primaryStage.getScene()' so KnockoutStageView can navigate back seamlessly
             KnockoutStageView knockoutView = new KnockoutStageView(primaryStage, tournamentManager, selectedMode, primaryStage.getScene());
             primaryStage.setScene(knockoutView.createKnockoutScene());
         });
         
         HBox topBar = new HBox(15, titleLabel, simButton, nextStageButton);
 
-        // If tracking a team, add a button to open the external "All Groups" window
+        // Render external window control when operating in focused tracking mode
         if (trackedTeamName != null) {
+        	
             Button viewAllBtn = new Button("Explore All Groups 🌐");
             viewAllBtn.setStyle("-fx-background-color: #718096; -fx-text-fill: white; -fx-font-weight: bold; -fx-font-size: 14px;");
             viewAllBtn.setOnAction(e -> openAllGroupsWindow());
@@ -89,44 +127,61 @@ public class GroupStageView {
         topBar.setPadding(new Insets(0, 0, 15, 0));
         root.setTop(topBar);
 
-        // Center Container
+        // Center Content Container
         centerContainer = new ScrollPane();
         centerContainer.setFitToWidth(true);
         centerContainer.setContent(buildCenterContent());
         root.setCenter(centerContainer);
 
-        // Check if group stage has already been simulated
+        // Restore UI state if group stage was previously executed
         if (isGroupStageAlreadySimulated()) {
+        	
             simButton.setDisable(true);
             simButton.setText("Completed ✓");
             nextStageButton.setDisable(false);
         }
 
-     // Simulation Button Action
+        // Action Handler: Executes group stage simulation algorithm
         simButton.setOnAction(e -> {
             tournamentManager.runGroupStage();
-            centerContainer.setContent(buildCenterContent()); // Refresh table data visually
+            centerContainer.setContent(buildCenterContent()); // Re-render tables with updated match results
             simButton.setDisable(true);
             simButton.setText("Completed ✓");
             nextStageButton.setDisable(false);
 
-            // Call the updated elimination checking logic
+            // Trigger elimination check for tracked team
             checkUserTeamElimination();
         });
 
         return new Scene(root, 1100, 750);
     }
 
+    /**
+     * Determines whether group stage match results have already been processed in the engine.
+     * 
+     * @return boolean True if at least one group match has been marked as played.
+     */
+    
     private boolean isGroupStageAlreadySimulated() {
+    	
         for (Group g : tournamentManager.getGroups()) {
+        	
             for (Match m : g.getMatches()) {
+            	
                 if (m.isPlayed()) return true;
             }
         }
         return false;
     }
 
+    /**
+     * Displays a decision dialog when a user's tracked team is eliminated in group play.
+     * 
+     * @param teamName The nation that was eliminated.
+     */
+    
     private void promptUserTeamEliminated(String teamName) {
+    	
         Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
         alert.setTitle("Team Eliminated");
         alert.setHeaderText("❌ " + teamName + " Has Been Knocked Out!");
@@ -140,7 +195,7 @@ public class GroupStageView {
         alert.showAndWait().ifPresent(type -> {
             if (type == startOverBtn) {
                 try {
-                    new Main().start(primaryStage);
+                    new Main().start(primaryStage); // Restart application state
                 } catch (Exception ex) {
                     ex.printStackTrace();
                 }
@@ -149,13 +204,18 @@ public class GroupStageView {
     }
 
     /**
-     * Determines whether to render a single focused group or the full 12-group grid.
+     * Evaluates view context and constructs either a single focused group card or the complete grid.
+     * 
+     * @return Pane The primary layout node containing group table view(s).
      */
+    
     private Pane buildCenterContent() {
+    	
         if (trackedTeamName != null) {
-            // Locate the group containing the tracked team
+        	
             Group focusGroup = findGroupForTeam(trackedTeamName);
             if (focusGroup != null) {
+            	
                 VBox focusedBox = new VBox(15);
                 focusedBox.setAlignment(Pos.CENTER);
                 focusedBox.setPadding(new Insets(30));
@@ -164,18 +224,25 @@ public class GroupStageView {
                 focusLabel.setStyle("-fx-font-size: 22px; -fx-font-weight: bold; -fx-text-fill: #2b6cb0;");
 
                 VBox groupCard = createGroupTableCard(focusGroup);
-                groupCard.setMaxWidth(600); // Give the single group card prominent width
+                groupCard.setMaxWidth(600);
 
                 focusedBox.getChildren().addAll(focusLabel, groupCard);
                 return focusedBox;
             }
         }
 
-        // Fallback: Default Birds-Eye view (All 12 Groups)
+        // Fallback or default view: Full 12-group grid layout
         return buildAllGroupsGrid();
     }
 
+    /**
+     * Assembles a 4-column responsive GridPane holding all 12 tournament group cards.
+     * 
+     * @return GridPane The rendered grid matrix.
+     */
+    
     private GridPane buildAllGroupsGrid() {
+    	
         GridPane grid = new GridPane();
         grid.setHgap(15);
         grid.setVgap(15);
@@ -183,11 +250,13 @@ public class GroupStageView {
 
         int col = 0, row = 0;
         for (Group group : tournamentManager.getGroups()) {
+        	
             VBox groupCard = createGroupTableCard(group);
             grid.add(groupCard, col, row);
 
             col++;
-            if (col == 4) {
+            if (col == 4) { 
+            	// Row break after 4 columns
                 col = 0;
                 row++;
             }
@@ -196,11 +265,13 @@ public class GroupStageView {
     }
 
     /**
-     * Pops open a secondary JavaFX Window displaying all 12 Groups.
+     * Opens a non-modal secondary window displaying all 12 group tables concurrently.
      */
+    
     private void openAllGroupsWindow() {
+    	
         Stage secondaryStage = new Stage();
-        secondaryStage.initModality(Modality.NONE); // Allows user to interact with both windows
+        secondaryStage.initModality(Modality.NONE);
         secondaryStage.setTitle("2026 FIFA World Cup - All Group Standings");
 
         ScrollPane scrollPane = new ScrollPane(buildAllGroupsGrid());
@@ -211,9 +282,19 @@ public class GroupStageView {
         secondaryStage.show();
     }
 
+    /**
+     * Helper lookup utility to identify which group contains a specific team.
+     * 
+     * @param countryName Name of the team to locate.
+     * @return Group The matching group instance, or null if not found.
+     */
+    
     private Group findGroupForTeam(String countryName) {
+    	
         for (Group g : tournamentManager.getGroups()) {
+        	
             for (Team t : g.getTeams()) {
+            	
                 if (t.getCountryName().equalsIgnoreCase(countryName)) {
                     return g;
                 }
@@ -222,7 +303,16 @@ public class GroupStageView {
         return null;
     }
 
-    private VBox createGroupTableCard(Group group) {
+    /**
+     * Generates an individual UI card containing a formatted JavaFX TableView of group standings.
+     * 
+     * @param group The group object holding standing metrics (PTS, GF, GA, GD).
+     * @return VBox The visual group table component.
+     */
+    
+    @SuppressWarnings({ "unchecked", "unused" })
+	private VBox createGroupTableCard(Group group) {
+    	
         VBox box = new VBox(5);
         box.setStyle("-fx-border-color: #cbd5e0; -fx-border-radius: 5; -fx-background-color: white; -fx-padding: 10;");
 
@@ -241,26 +331,22 @@ public class GroupStageView {
 
         header.getChildren().addAll(groupTitle, spacer, viewMatchesBtn);
 
+        // Configure JavaFX TableView and column mappings
         TableView<Team> table = new TableView<>();
         table.setPrefHeight(150);
 
-        // 1. Team Name Column
         TableColumn<Team, String> nameCol = new TableColumn<>("Team");
         nameCol.setCellValueFactory(new PropertyValueFactory<>("countryName"));
 
-        // 2. Points (PTS) Column
         TableColumn<Team, Integer> ptsCol = new TableColumn<>("PTS");
         ptsCol.setCellValueFactory(new PropertyValueFactory<>("points"));
 
-        // 3. Goals For (GF) Column
         TableColumn<Team, Integer> gfCol = new TableColumn<>("GF");
         gfCol.setCellValueFactory(new PropertyValueFactory<>("goalsFor"));
 
-        // 4. Goals Against (GA) Column
         TableColumn<Team, Integer> gaCol = new TableColumn<>("GA");
         gaCol.setCellValueFactory(new PropertyValueFactory<>("goalsAgainst"));
 
-        // 5. Goal Difference (GD) Column
         TableColumn<Team, Integer> gdCol = new TableColumn<>("GD");
         gdCol.setCellValueFactory(new PropertyValueFactory<>("goalDifference"));
 
@@ -273,7 +359,14 @@ public class GroupStageView {
         return box;
     }
 
+    /**
+     * Displays an informational modal with specific scorelines, venues, and kickoff times.
+     * 
+     * @param group The group whose fixture results will be rendered.
+     */
+    
     private void showMatchResultsDialog(Group group) {
+    	
         Alert alert = new Alert(Alert.AlertType.INFORMATION);
         alert.setTitle("Group " + group.getName() + " - Match Results");
         alert.setHeaderText("Fixtures & Scores for Group " + group.getName());
@@ -282,9 +375,12 @@ public class GroupStageView {
         content.setPadding(new Insets(10));
 
         if (group.getMatches().isEmpty()) {
+        	
             content.getChildren().add(new Label("No matches played yet. Click 'Simulate All Group Matches' first!"));
         } else {
+        	
             for (Match m : group.getMatches()) {
+            	
                 String line = String.format("%s %d - %d %s  (%s | %s)", 
                     m.getTeamA().getCountryName(), m.getScoreA(),
                     m.getScoreB(), m.getTeamB().getCountryName(),

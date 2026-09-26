@@ -13,11 +13,24 @@ import javafx.scene.paint.Color;
 import javafx.scene.shape.Line;
 import javafx.stage.Stage;
 
+/**
+ * User interface dashboard for the Knockout Stage of the Tournament Engine.
+ * <p>
+ * Manages stage navigation (Round of 32 through Finals), dual-rendering views 
+ * (ListView vs. Interactive Visual Bracket View with orthogonal connector lines), 
+ * single-elimination match simulation, and champion celebration presentation.
+ * </p>
+ * 
+ * @author William Weeks
+ * @version 1.0
+ */
+
 public class KnockoutStageView {
 
     private Stage primaryStage;
     private TournamentManager tournamentManager;
-    private String selectedMode;
+    @SuppressWarnings("unused")
+	private String selectedMode;
     private Scene groupStageScene;
 
     private BorderPane mainLayout;
@@ -33,7 +46,17 @@ public class KnockoutStageView {
     private final String[] STAGE_NAMES = {"Round of 32", "Round of 16", "Quarter-Finals", "Semi-Finals", "Finals"};
     private int activeViewStageIndex = 0;
 
+    /**
+     * Constructs the KnockoutStageView dashboard and initializes stage position.
+     * 
+     * @param primaryStage The primary JavaFX window frame for scene switching.
+     * @param tournamentManager Core engine containing tournament structures and match histories.
+     * @param selectedMode Operating mode string ("Spectate" or "Tracking: [Country]").
+     * @param groupStageScene Reference to the prior Scene to allow seamless backward navigation.
+     */
+    
     public KnockoutStageView(Stage primaryStage, TournamentManager tournamentManager, String selectedMode, Scene groupStageScene) {
+    	
         this.primaryStage = primaryStage;
         this.tournamentManager = tournamentManager;
         this.selectedMode = selectedMode;
@@ -41,14 +64,24 @@ public class KnockoutStageView {
         this.activeViewStageIndex = tournamentManager.getCurrentKnockoutStageIndex();
     }
 
-    public Scene createKnockoutScene() {
+    /**
+     * Builds and configures the primary JavaFX Scene for the Knockout Stage interface.
+     * 
+     * @return Scene The rendered Knockout Stage scene object.
+     */
+    
+    @SuppressWarnings("unused")
+	public Scene createKnockoutScene() {
+    	
         mainLayout = new BorderPane();
         mainLayout.setPadding(new Insets(15));
 
+        // Navigation Controls: Back to Group Stage
         Button backToGroupBtn = new Button("← Back to Group Stage");
         backToGroupBtn.setStyle("-fx-background-color: #cbd5e0; -fx-font-weight: bold; -fx-font-size: 13px;");
         backToGroupBtn.setOnAction(e -> primaryStage.setScene(groupStageScene));
 
+        // Knockout Stage Pagination Controls
         prevStageButton = new Button("◄ Prev Stage");
         prevStageButton.setStyle("-fx-background-color: #e2e8f0; -fx-font-weight: bold; -fx-font-size: 13px;");
         prevStageButton.setOnAction(e -> navigateStage(-1));
@@ -62,6 +95,7 @@ public class KnockoutStageView {
         nextStageButton = new Button("Next Stage ►");
         nextStageButton.setStyle("-fx-background-color: #3182ce; -fx-text-fill: white; -fx-font-weight: bold; -fx-font-size: 13px;");
 
+        // UI View Mode Toggle Switch (List View vs. Bracket View)
         ToggleButton listToggle = new ToggleButton("List View");
         ToggleButton bracketToggle = new ToggleButton("Bracket View");
         ToggleGroup viewGroup = new ToggleGroup();
@@ -77,6 +111,7 @@ public class KnockoutStageView {
         topBar.setPadding(new Insets(0, 0, 15, 0));
         mainLayout.setTop(topBar);
 
+        // Center View Viewports: List Container & Bracket Container
         matchesContainer = new VBox(10);
         matchesContainer.setPadding(new Insets(10));
         listViewPane = new ScrollPane(matchesContainer);
@@ -86,8 +121,9 @@ public class KnockoutStageView {
         bracketViewPane.setFitToWidth(false);
         bracketViewPane.setFitToHeight(true);
 
-        mainLayout.setCenter(listViewPane);
+        mainLayout.setCenter(listViewPane); // Default to List View
 
+        // View Mode Event Handlers
         listToggle.setOnAction(e -> mainLayout.setCenter(listViewPane));
         bracketToggle.setOnAction(e -> {
             bracketViewPane.setContent(buildFullProgressionBracketView());
@@ -97,12 +133,20 @@ public class KnockoutStageView {
         simStageButton.setOnAction(e -> simulateCurrentStage());
         nextStageButton.setOnAction(e -> navigateStage(1));
 
+        // Initialize UI control states based on current tournament progress
         updateStageUIState();
 
         return new Scene(mainLayout, 1150, 750);
     }
 
+    /**
+     * Navigates the view state across knockout stages or advances the tournament engine to the next round.
+     * 
+     * @param direction Step offset (-1 for historical view, +1 for forward stage view/advancement).
+     */
+    
     private void navigateStage(int direction) {
+    	
         int targetIndex = activeViewStageIndex + direction;
         if (targetIndex >= 0 && targetIndex <= tournamentManager.getCurrentKnockoutStageIndex()) {
             activeViewStageIndex = targetIndex;
@@ -112,7 +156,12 @@ public class KnockoutStageView {
         }
     }
 
+    /**
+     * Signals the backend tournament engine to instantiate fixtures for the upcoming knockout round.
+     */
+    
     private void advanceTournamentToNextRound() {
+    	
         int highest = tournamentManager.getCurrentKnockoutStageIndex();
         if (highest == 0) tournamentManager.setupRoundOf16();
         else if (highest == 1) tournamentManager.setupQuarterFinals();
@@ -128,13 +177,20 @@ public class KnockoutStageView {
         updateStageUIState();
     }
 
+    /**
+     * Executes single-elimination match simulations for all unplayed fixtures in the active stage.
+     */
+    
     private void simulateCurrentStage() {
+    	
         List<Match> matches = getCurrentStageMatches(activeViewStageIndex);
         boolean userTeamWasEliminatedThisRound = false;
         String userTeam = tournamentManager.getUserChosenTeamName();
 
         for (Match m : matches) {
+        	
             if (!m.isPlayed()) {
+            	
                 m.playMatch();
                 if (tournamentManager.isUserTeamEliminated(m)) {
                     userTeamWasEliminatedThisRound = true;
@@ -145,11 +201,17 @@ public class KnockoutStageView {
         updateStageUIState();
 
         if (userTeamWasEliminatedThisRound) {
+        	
             promptUserTeamEliminated(userTeam);
         }
     }
 
+    /**
+     * Synchronizes button states, header titles, and view containers with the engine state.
+     */
+    
     private void updateStageUIState() {
+    	
         titleLabel.setText(STAGE_NAMES[activeViewStageIndex]);
         List<Match> currentMatches = getCurrentStageMatches(activeViewStageIndex);
 
@@ -175,24 +237,50 @@ public class KnockoutStageView {
         }
     }
 
+    /**
+     * Checks if all fixtures within a given knockout stage index have completed.
+     * 
+     * @param stageIndex Stage index (0 through 4) to verify.
+     * @return boolean True if all matches in the stage are played.
+     */
+    
     private boolean isStagePlayed(int stageIndex) {
+    	
         List<Match> matches = getCurrentStageMatches(stageIndex);
         if (matches.isEmpty()) return false;
         for (Match m : matches) {
+        	
             if (!m.isPlayed()) return false;
         }
         return true;
     }
 
+    /**
+     * Verifies if the highest unlocked knockout stage has completed execution.
+     * 
+     * @return boolean True if active highest stage is played.
+     */
+    
     private boolean isCurrentStageFullyPlayed() {
+    	
         return isStagePlayed(tournamentManager.getCurrentKnockoutStageIndex());
     }
 
+    /**
+     * Retrieves fixture lists corresponding to a designated knockout stage index.
+     * 
+     * @param stageIndex Index mapping (0: Ro32, 1: Ro16, 2: QF, 3: SF, 4: Finals).
+     * @return List&lt;Match&gt; Matches registered for the given stage.
+     */
+    
     private List<Match> getCurrentStageMatches(int stageIndex) {
+    	
         switch (stageIndex) {
+        
             case 0: 
                 List<Match> ro32 = tournamentManager.getKnockoutRound32Matches();
                 if (ro32 == null || ro32.isEmpty()) {
+                	
                     ro32 = tournamentManager.setupRoundOf32();
                 }
                 return ro32;
@@ -208,12 +296,21 @@ public class KnockoutStageView {
         }
     }
 
+    /**
+     * Renders match list cards for the standard list view mode.
+     * 
+     * @param matches Fixtures to render.
+     */
+    
     private void renderListView(List<Match> matches) {
+    	
         matchesContainer.getChildren().clear();
         String focusTeam = tournamentManager.getUserChosenTeamName();
 
         if (activeViewStageIndex == 4 && !matches.isEmpty()) {
+        	
             for (Match m : matches) {
+            	
                 boolean isFinal = (m == tournamentManager.getFinalMatch());
                 Label headerLabel = new Label(isFinal ? "🏆 WORLD CUP FINAL" : "🥉 3RD PLACE PLAY-OFF");
                 headerLabel.setStyle("-fx-font-weight: bold; -fx-font-size: 15px; -fx-text-fill: #2b6cb0; -fx-padding: 10 0 5 0;");
@@ -223,14 +320,26 @@ public class KnockoutStageView {
                 matchesContainer.getChildren().add(card);
             }
         } else {
+        	
             for (Match m : matches) {
+            	
                 HBox card = createMatchListCard(m, focusTeam, false);
                 matchesContainer.getChildren().add(card);
             }
         }
     }
 
+    /**
+     * Creates an individual UI list card displaying fixture details, scores, and venue info.
+     * 
+     * @param m Target Match object.
+     * @param focusTeam Currently tracked nation (highlighted if present).
+     * @param isFinal True if match represents the World Cup Final.
+     * @return HBox Visual fixture card.
+     */
+    
     private HBox createMatchListCard(Match m, String focusTeam, boolean isFinal) {
+    	
         HBox card = new HBox(15);
         card.setAlignment(Pos.CENTER_LEFT);
 
@@ -253,16 +362,19 @@ public class KnockoutStageView {
         Label teamB = new Label(m.getTeamB().getCountryName());
         teamB.setStyle("-fx-font-weight: bold; -fx-font-size: 13px; -fx-pref-width: 140;");
 
+        // Annotate medal placements if rendering played final stage fixtures
         if (m.isPlayed() && activeViewStageIndex == 4) {
             Team winner = m.getWinner();
             Team loser = (winner == m.getTeamA()) ? m.getTeamB() : m.getTeamA();
 
             if (isFinal) {
+            	
                 if (m.getTeamA() == winner) teamA.setText("🥇 " + m.getTeamA().getCountryName() + " (CHAMPION)");
                 if (m.getTeamB() == winner) teamB.setText("🥇 " + m.getTeamB().getCountryName() + " (CHAMPION)");
                 if (m.getTeamA() == loser) teamA.setText("🥈 " + m.getTeamA().getCountryName() + " (RUNNER-UP)");
                 if (m.getTeamB() == loser) teamB.setText("🥈 " + m.getTeamB().getCountryName() + " (RUNNER-UP)");
             } else {
+            	
                 if (m.getTeamA() == winner) teamA.setText("🥉 " + m.getTeamA().getCountryName() + " (3RD PLACE)");
                 if (m.getTeamB() == winner) teamB.setText("🥉 " + m.getTeamB().getCountryName() + " (3RD PLACE)");
             }
@@ -282,10 +394,15 @@ public class KnockoutStageView {
     }
 
     /**
-     * Builds Bracket View with precise drawing overlay.
+     * Constructs the visual bracket tree and initializes a transparent drawing overlay for connectors.
+     * 
+     * @return Pane StackPane containing the bracket node tree and overlay drawing pane.
      */
-    private Pane buildFullProgressionBracketView() {
-        HBox bracketTree = new HBox(80); // Comfortable gap for connecting lines
+    
+    @SuppressWarnings("unused")
+	private Pane buildFullProgressionBracketView() {
+    	
+        HBox bracketTree = new HBox(80); // Horizontal spacing between rounds
         bracketTree.setPadding(new Insets(20));
         bracketTree.setAlignment(Pos.CENTER_LEFT);
 
@@ -338,14 +455,12 @@ public class KnockoutStageView {
         }
 
         Pane overlayPane = new Pane();
-        overlayPane.setMouseTransparent(true);
+        overlayPane.setMouseTransparent(true); // Allow clicks to pass through overlay to bracket nodes
 
-     // Use StackPane so overlayPane sits directly on top of bracketTree,
-        // and it correctly returns a Pane.
         StackPane canvasContainer = new StackPane(bracketTree, overlayPane);
         canvasContainer.setAlignment(Pos.CENTER_LEFT);
 
-        // Re-draw bracket lines dynamically whenever the UI updates layout
+        // Dynamically recalculate connector lines when layout geometry shifts
         bracketTree.boundsInParentProperty().addListener((obs, oldVal, newVal) -> {
             Platform.runLater(() -> drawBracketConnectors(allMatchNodesByStage, overlayPane));
         });
@@ -353,7 +468,15 @@ public class KnockoutStageView {
         return canvasContainer;
     }
 
+    /**
+     * Calculates relative scene coordinates to draw orthogonal connector lines between match nodes.
+     * 
+     * @param stageNodes Matrix of visual match node blocks grouped by stage index.
+     * @param overlayPane Transparent overlay pane onto which vector lines are drawn.
+     */
+    
     private void drawBracketConnectors(List<List<VBox>> stageNodes, Pane overlayPane) {
+    	
         overlayPane.getChildren().clear();
 
         for (int stage = 0; stage < stageNodes.size() - 1; stage++) {
@@ -364,12 +487,12 @@ public class KnockoutStageView {
 
             for (int i = 0; i < currentRound.size(); i++) {
                 VBox sourceNode = currentRound.get(i);
-                int targetIndex = i / 2;
+                int targetIndex = i / 2; // Every pair of matches feeds into one subsequent match
 
                 if (targetIndex < nextRound.size()) {
                     VBox targetNode = nextRound.get(targetIndex);
 
-                    // Compute precise relative coordinates
+                    // Compute relative scene coordinates dynamically
                     Point2D startScene = sourceNode.localToScene(sourceNode.getWidth(), sourceNode.getHeight() / 2.0);
                     Point2D endScene = targetNode.localToScene(0, targetNode.getHeight() / 2.0);
 
@@ -387,7 +510,7 @@ public class KnockoutStageView {
 
                     double midX = startX + (endX - startX) / 2.0;
 
-                    // Orthogonal elbow lines like ESPN/Google World Cup brackets
+                    // Draw 3 orthogonal segments (elbow connector pattern)
                     Line line1 = new Line(startX, startY, midX, startY);
                     Line line2 = new Line(midX, startY, midX, endY);
                     Line line3 = new Line(midX, endY, endX, endY);
@@ -402,7 +525,17 @@ public class KnockoutStageView {
         }
     }
 
+    /**
+     * Creates a compact node box for an individual fixture within the visual bracket tree.
+     * 
+     * @param m Match object.
+     * @param isFinalMatch True if node is the World Cup Final.
+     * @param isThirdPlaceMatch True if node is the 3rd Place Match.
+     * @return VBox Compact UI block representation of a fixture.
+     */
+    
     private VBox createBracketMatchNode(Match m, boolean isFinalMatch, boolean isThirdPlaceMatch) {
+    	
         VBox box = new VBox(4);
         String focusTeam = tournamentManager.getUserChosenTeamName();
 
@@ -456,7 +589,14 @@ public class KnockoutStageView {
         return box;
     }
 
+    /**
+     * Displays a confirmation dialog when the tracked team loses a knockout match.
+     * 
+     * @param teamName The nation that was eliminated.
+     */
+    
     private void promptUserTeamEliminated(String teamName) {
+    	
         Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
         alert.setTitle("Team Eliminated");
         alert.setHeaderText("❌ " + teamName + " Has Been Knocked Out!");
@@ -478,7 +618,15 @@ public class KnockoutStageView {
         });
     }
 
-    private void showChampionScreen(Team champion) {
+    /**
+     * Renders a celebration screen displaying the tournament champion.
+     * 
+     * @param champion Team object representing the World Cup winner.
+     */
+    
+    @SuppressWarnings("unused")
+	private void showChampionScreen(Team champion) {
+    	
         VBox champLayout = new VBox(20);
         champLayout.setAlignment(Pos.CENTER);
         champLayout.setPadding(new Insets(40));

@@ -5,97 +5,53 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 
+/**
+ * Core business logic controller and engine for the 48-team FIFA World Cup Tournament.
+ * <p>
+ * Responsible for dataset initialization, group stage formation (seeded vs. randomized),
+ * group table standings tie-breaking, third-place qualifier evaluation, and bracket progression 
+ * through all knockout stages (Round of 32 down to the World Cup Final).
+ * </p>
+ * 
+ * @author William Weeks
+ * @version 1.0
+ */
+
 public class TournamentManager {
+
     private List<Team> allTeams;
     private List<Group> groups;
     private List<Team> knockoutTeamsStage32;
+    private List<Match> knockoutRound32Matches = new ArrayList<>();
     private List<Match> knockoutRound16Matches = new ArrayList<>();
     private List<Match> quarterFinalMatches = new ArrayList<>();
     private List<Match> semiFinalMatches = new ArrayList<>();
     private Match thirdPlaceMatch;
     private Match finalMatch;
     private Team champion;
-    private int currentKnockoutStageIndex = 0; // 0: RO32, 1: RO16, 2: QF, 3: SF, 4: Finals
-    private String userChosenTeamName = "";   // Populated in Focused Mode
-    private String mode = "Spectate";         // Added data field (default to "Spectate")
     
-    public int getCurrentKnockoutStageIndex() { return currentKnockoutStageIndex; }
-    public void setCurrentKnockoutStageIndex(int index) { this.currentKnockoutStageIndex = index; }
+    private int currentKnockoutStageIndex = 0; // Index mapping: 0=RO32, 1=RO16, 2=QF, 3=SF, 4=Finals
+    private String userChosenTeamName = "";   // Selected country for tracking mode
+    private String mode = "Spectate";         // Operating mode ("Spectate" or "Tracking")
 
-    public String getUserChosenTeamName() { return userChosenTeamName; }
-    public void setUserChosenTeamName(String name) { this.userChosenTeamName = name; }
-
-    // Mode Getter and Setter
-    public String getMode() { return this.mode; }
-    public void setMode(String mode) { this.mode = mode; }
-    
     /**
-     * Checks if the user's chosen team is still active in the tournament or eliminated.
+     * Matrix of official 2026 FIFA World Cup host venues across USA, Canada, and Mexico 
+     * used for round-robin and knockout fixture location tagging.
      */
-    public boolean isUserTeamEliminated(Match lastMatchPlayed) {
-        if (userChosenTeamName == null || userChosenTeamName.isEmpty()) return false;
-        
-        if (lastMatchPlayed.getTeamA().getCountryName().equalsIgnoreCase(userChosenTeamName) ||
-            lastMatchPlayed.getTeamB().getCountryName().equalsIgnoreCase(userChosenTeamName)) {
-            return !lastMatchPlayed.getWinner().getCountryName().equalsIgnoreCase(userChosenTeamName);
-        }
-        return false;
-    }
     
-    /**
-     * Checks if the user's team qualified out of the Group Stage.
-     * Returns true if the team was ELIMINATED (did not qualify).
-     */
-    public boolean isUserTeamEliminatedInGroupStage() {
-        if (userChosenTeamName == null || userChosenTeamName.isEmpty()) return false;
-
-        // Get list of all teams that advanced to Round of 32
-        List<Match> ro32Matches = getKnockoutRound32Matches();
-        if (ro32Matches.isEmpty()) {
-            ro32Matches = setupRoundOf32();
-        }
-
-        // Check if user's team is in any Round of 32 match
-        for (Match m : ro32Matches) {
-            if (m.getTeamA().getCountryName().equalsIgnoreCase(userChosenTeamName) ||
-                m.getTeamB().getCountryName().equalsIgnoreCase(userChosenTeamName)) {
-                return false; // Team made it to RO32, NOT eliminated!
-            }
-        }
-
-        return true; // Team was eliminated in group stage
-    }
-
-    // Checks if a specific team finished top 2 in their group (or top 8 third-place teams)
-    public boolean didTeamQualifyForKnockout(String countryName) {
-        if (countryName == null || countryName.trim().isEmpty()) {
-            return false;
-        }
-
-        // Search through round of 32 matches to see if the team made the cut
-        List<Match> ro32Matches = getKnockoutRound32Matches();
-        if (ro32Matches == null || ro32Matches.isEmpty()) {
-            ro32Matches = setupRoundOf32();
-        }
-
-        for (Match m : ro32Matches) {
-            if (m.getTeamA().getCountryName().equalsIgnoreCase(countryName) ||
-                m.getTeamB().getCountryName().equalsIgnoreCase(countryName)) {
-                return true; // Team successfully reached the knockout stage
-            }
-        }
-
-        return false; // Team failed to qualify
-    }
-    
-    // 2026 Host Cities matrix for match tagging
     private final String[] hostCities = {
+    		
         "New York/New Jersey", "Dallas", "Atlanta", "Los Angeles", "Miami", 
         "San Francisco", "Seattle", "Houston", "Philadelphia", "Kansas City", 
         "Boston", "Toronto", "Vancouver", "Mexico City", "Monterrey", "Guadalajara"
     };
 
+    /**
+     * Constructs a new TournamentManager instance and initializes team datasets.
+     */
+    
     public TournamentManager() {
+    	
         this.allTeams = new ArrayList<>();
         this.groups = new ArrayList<>();
         this.knockoutTeamsStage32 = new ArrayList<>();
@@ -103,15 +59,17 @@ public class TournamentManager {
     }
 
     /**
-     * Seeds the initial 48 teams and builds mock player rosters for them.
+     * Seeds initial 48 national teams with probability weights and populates 23-man mock rosters.
      */
+    
     private void initializeData() {
+    	
         String[][] teamSeeds = {
-            {"Spain", "2", "1", "1"}, {"Argentina", "3", "2", "3"},{"France", "1", "3", "2"}, {"Brasil", "6", "4", "5"},  
+            {"Spain", "2", "1", "1"}, {"Argentina", "3", "2", "3"}, {"France", "1", "3", "2"}, {"Brasil", "6", "4", "5"},  
             {"Netherlands", "7", "5", "0"}, {"England", "4", "6", "0"}, {"Portugal", "5", "7", "0"}, {"Germany", "10", "8", "4"}, 
             {"Colombia", "13", "9", "0"}, {"Croatia", "11", "10", "0"}, {"Morocco", "8", "11", "0"}, {"Uruguay", "17", "12", "2"},
             {"Belgium", "9", "13", "0"}, {"Senegal", "14", "14", "0"}, {"Egypt", "29", "15", "0"}, {"South Korea", "25", "16", "0"},  
-            {"Ecuador", "23", "17", "0"},  {"Mexico", "15", "18", "0"}, {"Norway", "31", "19", "0"}, {"Ivory Coast", "34", "20", "0"},
+            {"Ecuador", "23", "17", "0"}, {"Mexico", "15", "18", "0"}, {"Norway", "31", "19", "0"}, {"Ivory Coast", "34", "20", "0"},
             {"Japan", "18", "21", "0"}, {"Switzerland", "19", "22", "0"}, {"USA", "16", "23", "0"}, {"Turkey", "22", "24", "0"},
             {"Australiia", "27", "25", "0"}, {"Ghana", "74", "26", "0"}, {"Algeria", "28", "27", "0"}, {"Iran", "21", "28", "0"},
             {"Austria", "24", "29", "0"}, {"Canada", "30", "30", "0"}, {"Paraguay", "40", "31", "0"}, {"Saudi Arabia", "61", "32", "0"},
@@ -132,7 +90,14 @@ public class TournamentManager {
         }
     }
 
+    /**
+     * Divides 48 participating teams into 12 groups (Groups A through L) containing 4 teams each.
+     * 
+     * @param shuffle True to randomize group draws; False to seed sequentially by ranking probability.
+     */
+    
     public void setupGroups(boolean shuffle) {
+    	
         groups.clear();
         if (shuffle) {
             Collections.shuffle(allTeams);
@@ -148,7 +113,13 @@ public class TournamentManager {
         }
     }
 
+    /**
+     * Executes round-robin group stage simulation across all 12 groups, creating fixtures 
+     * with host cities, calculating results, updating standings, and identifying qualifiers.
+     */
+    
     public void runGroupStage() {
+    	
         int cityIndex = 0;
         for (Group g : groups) {
             g.getMatches().clear();
@@ -167,7 +138,13 @@ public class TournamentManager {
         determineKnockoutQualifiers();
     }
 
+    /**
+     * Evaluates group stage tables to determine the 32 advancing nations (top 2 from each group 
+     * plus top 8 third-place finishers ranked by points, goal difference, and goals scored).
+     */
+    
     private void determineKnockoutQualifiers() {
+    	
         knockoutTeamsStage32.clear();
         List<Team> allThirdPlaceTeams = new ArrayList<>();
 
@@ -178,6 +155,7 @@ public class TournamentManager {
             allThirdPlaceTeams.add(sortedTable.get(2));
         }
 
+        // Sort 3rd place teams across all 12 groups using FIFA tie-breaking criteria
         allThirdPlaceTeams.sort((t1, t2) -> {
             if (t1.getPoints() != t2.getPoints()) return Integer.compare(t2.getPoints(), t1.getPoints());
             if (t1.getGoalDifference() != t2.getGoalDifference()) return Integer.compare(t2.getGoalDifference(), t1.getGoalDifference());
@@ -189,12 +167,14 @@ public class TournamentManager {
         }
     }
 
-    public List<Group> getGroups() { return groups; }
-    public List<Team> getKnockoutTeamsStage32() { return knockoutTeamsStage32; }
+    /**
+     * Schedules and constructs fixture pairings for the Round of 32 knockout stage.
+     * 
+     * @return List&lt;Match&gt; Generated Round of 32 fixtures.
+     */
     
-    private List<Match> knockoutRound32Matches = new ArrayList<>();
-
     public List<Match> setupRoundOf32() {
+    	
         knockoutRound32Matches.clear();
 
         List<Team> winners = new ArrayList<>();
@@ -221,6 +201,7 @@ public class TournamentManager {
 
         int cityIndex = 0;
 
+        // Pair Top 8 Winners vs Top 8 Third-Place Teams
         for (int i = 0; i < 8; i++) {
             Team winner = winners.get(i);
             Team third = top8Thirds.get(7 - i);
@@ -230,6 +211,7 @@ public class TournamentManager {
             knockoutRound32Matches.add(new Match(winner, third, city, "17:00 UTC", "Round of 32", true));
         }
 
+        // Pair Remaining Winners vs Top Runners-Up
         for (int i = 0; i < 4; i++) {
             Team winner = winners.get(8 + i);
             Team runnerUp = runnersUp.get(i);
@@ -239,6 +221,7 @@ public class TournamentManager {
             knockoutRound32Matches.add(new Match(winner, runnerUp, city, "20:00 UTC", "Round of 32", true));
         }
 
+        // Pair Remaining Runners-Up against each other
         for (int i = 4; i < 12; i += 2) {
             Team r1 = runnersUp.get(i);
             Team r2 = runnersUp.get(i + 1);
@@ -251,9 +234,14 @@ public class TournamentManager {
         return knockoutRound32Matches;
     }
 
-    public List<Match> getKnockoutRound32Matches() { return knockoutRound32Matches; }
+    /**
+     * Generates Round of 16 fixtures using winners from Round of 32.
+     * 
+     * @return List&lt;Match&gt; Generated Round of 16 fixtures.
+     */
     
     public List<Match> setupRoundOf16() {
+    	
         knockoutRound16Matches.clear();
         int cityIndex = 0;
 
@@ -269,7 +257,14 @@ public class TournamentManager {
         return knockoutRound16Matches;
     }
 
+    /**
+     * Generates Quarter-Final fixtures using winners from Round of 16.
+     * 
+     * @return List&lt;Match&gt; Generated Quarter-Final fixtures.
+     */
+    
     public List<Match> setupQuarterFinals() {
+    	
         quarterFinalMatches.clear();
         int cityIndex = 4;
 
@@ -285,7 +280,14 @@ public class TournamentManager {
         return quarterFinalMatches;
     }
 
+    /**
+     * Generates Semi-Final fixtures in host cities Atlanta and Dallas.
+     * 
+     * @return List&lt;Match&gt; Generated Semi-Final fixtures.
+     */
+    
     public List<Match> setupSemiFinals() {
+    	
         semiFinalMatches.clear();
 
         Team w1 = quarterFinalMatches.get(0).getWinner();
@@ -299,7 +301,13 @@ public class TournamentManager {
         return semiFinalMatches;
     }
 
+    /**
+     * Instantiates the 3rd Place Match (Miami) and the World Cup Final (New York/New Jersey) 
+     * from Semi-Final results.
+     */
+    
     public void setupFinals() {
+    	
         Match sf1 = semiFinalMatches.get(0);
         Match sf2 = semiFinalMatches.get(1);
 
@@ -313,6 +321,88 @@ public class TournamentManager {
         finalMatch = new Match(sf1Winner, sf2Winner, "New York/New Jersey", "20:00 UTC", "World Cup Final", true);
     }
 
+    /**
+     * Evaluates if a specified match resulted in the elimination of the user's selected focus team.
+     * 
+     * @param lastMatchPlayed The completed match to check.
+     * @return boolean True if user's team participated and lost.
+     */
+    
+    public boolean isUserTeamEliminated(Match lastMatchPlayed) {
+    	
+        if (userChosenTeamName == null || userChosenTeamName.isEmpty()) return false;
+        
+        if (lastMatchPlayed.getTeamA().getCountryName().equalsIgnoreCase(userChosenTeamName) ||
+            lastMatchPlayed.getTeamB().getCountryName().equalsIgnoreCase(userChosenTeamName)) {
+            return !lastMatchPlayed.getWinner().getCountryName().equalsIgnoreCase(userChosenTeamName);
+        }
+        return false;
+    }
+
+    /**
+     * Determines whether the user's focus team failed to advance past the Group Stage into the Round of 32.
+     * 
+     * @return boolean True if user's team failed to qualify for the knockout stage.
+     */
+    
+    public boolean isUserTeamEliminatedInGroupStage() {
+    	
+        if (userChosenTeamName == null || userChosenTeamName.isEmpty()) return false;
+
+        List<Match> ro32Matches = getKnockoutRound32Matches();
+        if (ro32Matches.isEmpty()) {
+            ro32Matches = setupRoundOf32();
+        }
+
+        for (Match m : ro32Matches) {
+            if (m.getTeamA().getCountryName().equalsIgnoreCase(userChosenTeamName) ||
+                m.getTeamB().getCountryName().equalsIgnoreCase(userChosenTeamName)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * Checks if a specific nation successfully qualified for the Round of 32.
+     * 
+     * @param countryName Name of the nation to check.
+     * @return boolean True if team is scheduled in a Round of 32 fixture.
+     */
+    
+    public boolean didTeamQualifyForKnockout(String countryName) {
+    	
+        if (countryName == null || countryName.trim().isEmpty()) {
+            return false;
+        }
+
+        List<Match> ro32Matches = getKnockoutRound32Matches();
+        if (ro32Matches == null || ro32Matches.isEmpty()) {
+            ro32Matches = setupRoundOf32();
+        }
+
+        for (Match m : ro32Matches) {
+            if (m.getTeamA().getCountryName().equalsIgnoreCase(countryName) ||
+                m.getTeamB().getCountryName().equalsIgnoreCase(countryName)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // Standard Getters & Setters
+    public int getCurrentKnockoutStageIndex() { return currentKnockoutStageIndex; }
+    public void setCurrentKnockoutStageIndex(int index) { this.currentKnockoutStageIndex = index; }
+
+    public String getUserChosenTeamName() { return userChosenTeamName; }
+    public void setUserChosenTeamName(String name) { this.userChosenTeamName = name; }
+
+    public String getMode() { return this.mode; }
+    public void setMode(String mode) { this.mode = mode; }
+
+    public List<Group> getGroups() { return groups; }
+    public List<Team> getKnockoutTeamsStage32() { return knockoutTeamsStage32; }
+    public List<Match> getKnockoutRound32Matches() { return knockoutRound32Matches; }
     public List<Match> getKnockoutRound16Matches() { return knockoutRound16Matches; }
     public List<Match> getQuarterFinalMatches() { return quarterFinalMatches; }
     public List<Match> getSemiFinalMatches() { return semiFinalMatches; }
